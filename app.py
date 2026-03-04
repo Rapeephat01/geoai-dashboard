@@ -12,8 +12,7 @@ warnings.filterwarnings('ignore')
 # ---------------------------------------------------------
 st.set_page_config(page_title="GeoAI Wildfire & PM2.5", layout="wide", page_icon="🔥")
 
-st.markdown("<h1 style='text-align: center;'>🔥 Geo-Spatial Dashboard: วิเคราะห์ความสัมพันธ์
-ไฟป่าและฝุ่น PM 2.5</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🔥 Geo-Spatial Dashboard: วิเคราะห์ความสัมพันธ์ไฟป่าและฝุ่น PM 2.5</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ---------------------------------------------------------
@@ -258,4 +257,5 @@ fig.update_yaxes(title_text="<b>ปริมาณ PM 2.5 (µg/m³)</b>", second
 # สั่งแสดงกราฟลงใน Streamlit
 
 st.plotly_chart(fig, use_container_width=True)
+
 
