@@ -1,0 +1,6 @@
+streamlit
+pandas
+geopandas
+leafmap
+folium
+plotly
