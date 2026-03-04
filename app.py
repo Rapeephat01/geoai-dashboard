@@ -21,7 +21,7 @@ st.markdown("---")
 @st.cache_data
 def load_data():
     # 1.1 โหลดไฟป่า
-    df = pd.read_csv('thailand_fire_2021_2025.csv')
+    df = pd.read_csv('thailand_fire_2021_2025.csv.zip')
     df.columns = df.columns.str.lower()
     if 'acq_date' in df.columns:
         df['acq_date'] = pd.to_datetime(df['acq_date'])
@@ -255,4 +255,5 @@ fig.update_yaxes(title_text="<b>จำนวนจุดความร้อน
 fig.update_yaxes(title_text="<b>ปริมาณ PM 2.5 (µg/m³)</b>", secondary_y=True, showgrid=True, gridcolor='lightgray', gridwidth=1)
 
 # สั่งแสดงกราฟลงใน Streamlit
+
 st.plotly_chart(fig, use_container_width=True)
