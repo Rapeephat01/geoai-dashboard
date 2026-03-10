@@ -7,11 +7,15 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+
 st.set_page_config(page_title="GeoAI Wildfire & PM2.5", layout="wide", page_icon="🔥")
 
 st.markdown("<h1 style='text-align: center;'>🔥 Geo-Spatial Dashboard: วิเคราะห์ความสัมพันธ์<br>ไฟป่าและฝุ่น PM 2.5</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
+# ---------------------------------------------------------
+# 1. ฟังก์ชันโหลดข้อมูล (ใช้ @st.cache_data เพื่อให้เว็บโหลดเร็ว ไม่ต้องประมวลผลใหม่ทุกรอบ)
+# ---------------------------------------------------------
 @st.cache_data
 def load_data():
     # 1.1 โหลดไฟป่า
@@ -22,13 +26,13 @@ def load_data():
         df['year'] = df['acq_date'].dt.year
         df['month'] = df['acq_date'].dt.month
 
-
+    # 1.2 โหลดแผนที่จังหวัด
     if os.path.exists('provinces.geojson'):
         provinces = gpd.read_file('provinces.geojson')
     elif os.path.exists('provinces.geojson.txt'):
         provinces = gpd.read_file('provinces.geojson.txt')
     else:
-       
+        # ใช้ลิงก์แผนที่สำรองกรณีหาไฟล์ไม่เจอ
         url = "https://raw.githubusercontent.com/apisit/thailand.json/master/thai_provinces.geojson"
         provinces = gpd.read_file(url)
 
@@ -38,10 +42,11 @@ def load_data():
     possible_cols = ['pro_th', 'name_th', 'PROV_NAMT', 'ADM1_TH', 'pv_th', 'name']
     prov_col = next((col for col in possible_cols if col in provinces.columns), provinces.columns[0])
 
+    # 1.3 Spatial Join
     gdf_points = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
     gdf_joined = gpd.sjoin(gdf_points, provinces[[prov_col, 'geometry']], how="inner", predicate="within")
 
-   
+    # 1.4 โหลดข้อมูลฝุ่น PM 2.5
     pm25_real_data = pd.DataFrame()
     try:
         df_cm23 = pd.read_csv('chiang-mai-air-quality 2023.csv')
@@ -65,6 +70,9 @@ def load_data():
 with st.spinner('⏳ กำลังเตรียมโหลดข้อมูล...'):
     gdf_joined, provinces, pm25_real_data, prov_col = load_data()
 
+# ---------------------------------------------------------
+# 2. ฟังก์ชันตกแต่งสีและหน้าตา
+# ---------------------------------------------------------
 def get_gradient(color_name):
     if color_name == 'โทนความร้อน (ฟ้า-ม่วง-แดง)': return {0.4: 'cyan', 0.65: 'purple', 1.0: 'red'}
     elif color_name == 'โทนคลาสสิค (เขียว-เหลือง-แดง)': return {0.4: 'green', 0.65: 'yellow', 1.0: 'red'}
@@ -84,13 +92,16 @@ def get_legend_html(color_name):
     </div>
     """
 
+# ---------------------------------------------------------
+# 3. จัด UI โซนแถบควบคุมด้านบน (Top Bar)
+# ---------------------------------------------------------
 st.markdown("<h3 style='margin-bottom: 0px;'>🔍 ตัวกรองพื้นที่วิเคราะห์:</h3>", unsafe_allow_html=True)
 prov_list = ['ทุกจังหวัด (ทั้งประเทศ)'] + sorted(gdf_joined[prov_col].dropna().unique().tolist())
-
+# ตั้งค่า Default เป็นเชียงใหม่ถ้ามี
 default_prov_idx = prov_list.index('เชียงใหม่') if 'เชียงใหม่' in prov_list else 0
 province_filter = st.selectbox('เลือกพื้นที่:', prov_list, index=default_prov_idx, label_visibility="collapsed")
 
-
+# คำนวณพิกัด Center และ Zoom ตามจังหวัดที่เลือก
 if province_filter == 'ทุกจังหวัด (ทั้งประเทศ)':
     map_center, map_zoom = [15.0, 100.5], 5
 else:
@@ -109,6 +120,9 @@ years_available = sorted(gdf_joined['year'].unique())
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# ---------------------------------------------------------
+# 4. จัด UI โซนแผนที่ (อัปเกรดเป็น DualMap ซูมพร้อมกัน 100%)
+# ---------------------------------------------------------
 import folium
 from folium import plugins
 import streamlit.components.v1 as components
@@ -135,8 +149,10 @@ with col2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# --- 🎯 สร้างแผนที่แฝด (DualMap) ที่ซิงค์กัน 100% ---
 m = plugins.DualMap(location=map_center, zoom_start=map_zoom)
 
+# วาดขอบเขตจังหวัดทั้ง 2 ฝั่ง (โปร่งใส เส้นขอบสีดำ)
 prov_geojson = provinces.to_json()
 style_function = lambda x: {'fillColor': '#ffffff', 'color': '#000000', 'fillOpacity': 0.0, 'weight': 1}
 folium.GeoJson(prov_geojson, style_function=style_function, name="ขอบเขตจังหวัด").add_to(m.m1)
@@ -160,17 +176,23 @@ if not df_r.empty:
     heat_data_r = df_r[['latitude', 'longitude', 'brightness']].values.tolist()
     plugins.HeatMap(heat_data_r, name="Right Heatmap", radius=8, blur=5, gradient=get_gradient(color_right)).add_to(m.m2)
 
+# แสดงผลแผนที่แฝดลงใน Streamlit (ความกว้าง 100%)
 components.html(m.get_root().render(), height=500)
 
+# ---------------------------------------------------------
+# 5. สรุปสถิติและกราฟ (อัปเกรดเป็น Plotly Interactive)
+# ---------------------------------------------------------
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 st.markdown("---")
 st.markdown(f"<h3 style='text-align: center; color: #333;'>📊 สรุปสถิติและกราฟความสัมพันธ์: พื้นที่ {province_filter}</h3>", unsafe_allow_html=True)
 
+# คำนวณยอดรวม
 c_left, c_right = len(df_l), len(df_r)
 diff = c_right - c_left
 
+# 🌟 อัปเกรดตารางเป็น Metric Cards
 col_stat1, col_stat2, col_stat3 = st.columns(3)
 with col_stat1:
     st.metric(label=f"🔥 จุดความร้อน ปี {year_left} (ซ้าย)", value=f"{c_left:,} จุด")
@@ -181,6 +203,7 @@ with col_stat3:
     status = "วิกฤตมากขึ้น 🔴" if diff > 0 else "สถานการณ์ดีขึ้น 🟢" if diff < 0 else "ทรงตัว ⚪"
     st.info(f"**ภาพรวมปีล่าสุด:**\n\n{status}")
 
+# 🌟 เตรียมข้อมูลสำหรับกราฟ Plotly
 if province_filter == 'ทุกจังหวัด (ทั้งประเทศ)': df_prov = gdf_joined
 else: df_prov = gdf_joined[gdf_joined[prov_col] == province_filter]
 
@@ -192,7 +215,7 @@ def get_pm25_val(y, m, prov, fire_count):
         match = pm25_real_data[(pm25_real_data['year'] == y) & (pm25_real_data['month'] == m) & (pm25_real_data['province'] == prov)]
         if not match.empty and not pd.isna(match['pm25'].values[0]):
             return float(match['pm25'].values[0])
-   
+    # ถ้าไม่มีข้อมูลจริง ให้จำลองเชิงสถิติ
     max_fire = max(counts_l.max(), counts_r.max())
     max_fire = max_fire if max_fire > 0 else 100
     return float((fire_count / max_fire) * 110 + 15)
@@ -204,10 +227,10 @@ months_th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', '
 fire_l_list = [int(counts_l[m]) for m in range(1, 13)]
 fire_r_list = [int(counts_r[m]) for m in range(1, 13)]
 
-
+# 🌟 สร้างกราฟ 2 แกน (Dual-Axis) ด้วย Plotly
 fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-
+# เพิ่มกราฟแท่ง (ไฟป่า)
 fig.add_trace(go.Bar(x=months_th, y=fire_l_list, name=f'ไฟป่า ปี {year_left}', marker_color='#1976D2', opacity=0.85), secondary_y=False)
 fig.add_trace(go.Bar(x=months_th, y=fire_r_list, name=f'ไฟป่า ปี {year_right}', marker_color='#f44336', opacity=0.85), secondary_y=False)
 
@@ -215,6 +238,7 @@ fig.add_trace(go.Bar(x=months_th, y=fire_r_list, name=f'ไฟป่า ปี {
 fig.add_trace(go.Scatter(x=months_th, y=pm25_l, name=f'PM 2.5 ปี {year_left}', mode='lines+markers', line=dict(color="#7CD219", dash='dash', width=2), marker=dict(size=8)), secondary_y=True)
 fig.add_trace(go.Scatter(x=months_th, y=pm25_r, name=f'PM 2.5 ปี {year_right}', mode='lines+markers', line=dict(color="#f136f4", dash='dash', width=2), marker=dict(size=8)), secondary_y=True)
 
+# 🌟 ตกแต่งกราฟและการชี้เมาส์ (Hover)
 fig.update_layout(
     title_text="แนวโน้มจุดความร้อนเปรียบเทียบกับปริมาณ PM 2.5 รายเดือน",
     title_x=0.5,
@@ -228,9 +252,7 @@ fig.update_layout(
 fig.update_yaxes(title_text="<b>จำนวนจุดความร้อน (จุด)</b>", secondary_y=False, showgrid=False)
 fig.update_yaxes(title_text="<b>ปริมาณ PM 2.5 (µg/m³)</b>", secondary_y=True, showgrid=True, gridcolor='lightgray', gridwidth=1)
 
+# สั่งแสดงกราฟลงใน Streamlit
 
 st.plotly_chart(fig, use_container_width=True)
-
-
-
 
